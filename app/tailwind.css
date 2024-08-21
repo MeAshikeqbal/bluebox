@@ -2,9 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-*{
-  font: sans-serif;
-}
 
 @layer base {
   :root {

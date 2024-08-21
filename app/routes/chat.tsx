@@ -1,4 +1,4 @@
-import EmptyChat from "~/components/ChatWindow/emptychat";
+import EmptyChat from "~/components/chatWindow/emptychat";
 
 export default function Chatroute() {
     return (

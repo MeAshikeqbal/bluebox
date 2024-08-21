@@ -1,4 +1,4 @@
-import ChatWindowComponent from "~/components/ChatWindow";
+import ChatWindowComponent from "~/components/chatWindow";
 
 export default function ChatId() {
     return (
