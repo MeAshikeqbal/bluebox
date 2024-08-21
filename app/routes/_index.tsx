@@ -1,5 +1,5 @@
 import type { MetaFunction } from "@remix-run/node";
-import { Button } from "~/components/ui/button";
+import ChatSeparator from "~/components/chatseprator";
 
 export const meta: MetaFunction = () => {
   return [
@@ -10,8 +10,8 @@ export const meta: MetaFunction = () => {
 
 export default function Index() {
   return (
-    <div className="font-sans p-4">
-<Button variant={"ghost"}>Click me</Button>
-    </div>
+    <>
+      <ChatSeparator />
+    </>
   );
 }
