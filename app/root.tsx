@@ -6,8 +6,11 @@ import {
   ScrollRestoration,
 } from "@remix-run/react";
 import "./tailwind.css";
+import ChatSideBar from "./components/chatSideBar";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./components/ui/resizable";
 
-export function Layout({ children }: { children: React.ReactNode }) {
+
+export function Layout() {
   return (
     <html lang="en">
       <head>
@@ -17,9 +20,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Links />
       </head>
       <body
-      className="font-sans antialiased dark"
+        className="font-sans antialiased dark"
       >
-        {children}
+        <ResizablePanelGroup direction='horizontal'>
+          <ResizablePanel defaultSize={25}>
+            <ChatSideBar />
+          </ResizablePanel>
+          <ResizableHandle
+            className='h-screen'
+          />
+          <ResizablePanel>
+            <Outlet />
+          </ResizablePanel>
+        </ResizablePanelGroup>
         <ScrollRestoration />
         <Scripts />
       </body>

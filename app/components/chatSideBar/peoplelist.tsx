@@ -7,7 +7,7 @@ export default function peopleList() {
 
   return (
     <>
-      <Link to={`/chat`}
+      <Link to={`/chat/123`}
         className="flex p-1 mt-2 items-center hover:bg-secondary/60 rounded-lg"
       >
         <Avatar className="m-2">

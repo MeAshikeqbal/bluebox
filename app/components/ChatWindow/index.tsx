@@ -2,7 +2,7 @@ import ChatInput from "./chatinput";
 import ChatMessages from "./chatmessages";
 import TopBar from "./topbar";
 
-export default function ChatWindow() {
+export default function ChatWindowComponent() {
     return (
         <div className="flex flex-col h-screen">
             <TopBar />
