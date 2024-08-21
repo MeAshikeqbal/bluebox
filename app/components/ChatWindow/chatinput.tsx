@@ -1,45 +1,98 @@
-import { useState } from "react";
-import { Paperclip, SendHorizontal } from "lucide-react";
+import { useState, useRef, useEffect, ChangeEvent, KeyboardEvent } from "react";
+import { Paperclip, SendHorizontal, Smile } from "lucide-react";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
+import { Separator } from "../ui/separator";
+import Picker , {
+    EmojiClickData, 
+    Theme,
+    EmojiStyle 
+} from "emoji-picker-react";
+
 
 export default function ChatInput() {
-    const [inputStr, setInputStr] = useState("");
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const [inputStr, setInputStr] = useState<string>("");
+    const [showPicker, setShowPicker] = useState<boolean>(false);
+
+    const onEmojiClick = (emojiObject: EmojiClickData) => {
+        setInputStr((prevInput) => prevInput + emojiObject.emoji);
+        setShowPicker(false);
+    };
+
+
+    useEffect(() => {
+        if (textareaRef.current) {
+            textareaRef.current.style.height = "auto";
+            textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+        }
+    }, [inputStr]);
+
+    const handleSendMessage = () => {
+        if (inputStr.trim() === "") return;
+        console.log("Message sent:", inputStr);
+        setInputStr(""); // Clear the input after sending
+        setShowPicker(false); // Hide emoji picker after sending
+    };
+
+    const handleKeyPress = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            handleSendMessage();
+        }
+    };
+
+    const handleInputChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
+        setInputStr(e.target.value);
+    };
 
     return (
-        <div className="relative flex items-center p-2 border-t bg-white">
-            {/* Emoji Picker Button */}
-{/*            <Button
-                variant={"outline"}
-                className="mr-2"
-                onClick={() => setShowPicker((val) => !val)}
-                aria-label="Toggle emoji picker"
-            >
-                <Smile size={16} />
-            </Button> */}
-
-            {/* Attach File Button */}
-            <Button
-                variant="outline"
-                className="mr-2"
-                aria-label="Attach file"
-            >
-                <Paperclip size={16} />
-            </Button>
-
-            {/* Textarea */}
-            <Textarea
-                className="flex-1 resize-none rounded-md p-2 border-none focus:outline-none focus:ring-0"
-                placeholder="Type a message..."
-                value={inputStr}
-                onChange={(e) => setInputStr(e.target.value)}
-            />
-
-            {/* Send Button */}
-            <Button className="ml-2" aria-label="Send message">
-                <SendHorizontal size={16} />
-            </Button>
-
-        </div>
+        <>
+            <Separator />
+            <div className="flex items-center space-x-2 p-2">
+                <Button variant="ghost" className="p-2">
+                    <Paperclip className="w-5 h-5" />
+                </Button>
+                <div className="relative">
+                    <Button
+                        variant="ghost"
+                        className="p-2"
+                        onClick={() => setShowPicker((val) => !val)}
+                    >
+                        <Smile className="w-5 h-5" />
+                    </Button>
+                    {showPicker && (
+                        <div className="absolute bottom-10">
+                            <Picker
+                                onEmojiClick={onEmojiClick}
+                                theme={"dark" as Theme}
+                                emojiStyle={"native" as EmojiStyle}
+                                autoFocusSearch={true}
+                                width={350}
+                                height={450}
+                            />
+                        </div>
+                    )}
+                </div>
+                <Textarea
+                    ref={textareaRef}
+                    className="w-full resize-none overflow-hidden rounded-md p-2 border-none outline-none ring-0 bg-muted/50"
+                    placeholder="Type a message..."
+                    value={inputStr}
+                    onChange={handleInputChange}
+                    onKeyPress={handleKeyPress}
+                    rows={1}
+                    style={{ minHeight: "auto", lineHeight: "1.5" }}
+                />
+                <Button
+                    variant="link"
+                    className="p-2"
+                    onClick={handleSendMessage}
+                    disabled={inputStr.trim() === ""}
+                >
+                    <SendHorizontal className="w-5 h-5" />
+                </Button>
+            </div>
+        </>
     );
 }
