@@ -1,5 +1,4 @@
-import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "../ui/dropdown-menu";
+import Profile from "./profile";
 
 export default function Navbar() {
     return (
@@ -15,25 +14,7 @@ export default function Navbar() {
                     Chat App
                 </h1>
             </div>
-            <DropdownMenu>
-                <DropdownMenuTrigger>
-                    <Avatar
-                        className="cursor-pointer"
-                    >
-                        <AvatarImage src="https://avatars.githubusercontent.com/u/35164664?v=4" />
-                        <AvatarFallback>AS</AvatarFallback>
-                    </Avatar>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                    <DropdownMenuLabel>My Account</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem>Profile</DropdownMenuItem>
-                    <DropdownMenuItem>Billing</DropdownMenuItem>
-                    <DropdownMenuItem>Team</DropdownMenuItem>
-                    <DropdownMenuItem>Subscription</DropdownMenuItem>
-                </DropdownMenuContent>
-            </DropdownMenu>
-
+            <Profile />
         </div>
     );
 }
