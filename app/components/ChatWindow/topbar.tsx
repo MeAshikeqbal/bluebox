@@ -1,5 +1,5 @@
 import { Minimize2, PhoneCallIcon } from "lucide-react";
-import { Avatar } from "../ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { Separator } from "../ui/separator";
 import { Link } from "@remix-run/react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
@@ -12,10 +12,8 @@ export default function TopBar() {
             >
                 <div className="flex items-center space-x-4 p-2">
                     <Avatar className="m-2">
-                        <img
-                            src="https://avatars.githubusercontent.com/u/35164664?v=4"
-                            alt="Ashik Eqbal"
-                        />
+                        <AvatarImage src="https://avatars.githubusercontent.com/u/35164664?v=4" />
+                        <AvatarFallback>AS</AvatarFallback>
                     </Avatar>
                     <div className="flex flex-col">
                         <h2 className="text-md font-semibold">Ashik Eqbal</h2>
