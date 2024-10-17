@@ -18,7 +18,6 @@ export default function Profile() {
             <DropdownMenuItem>Profile</DropdownMenuItem>
             <DropdownMenuItem>Billing</DropdownMenuItem>
             <DropdownMenuItem>Team</DropdownMenuItem>
-            <DropdownMenuItem>Subscription</DropdownMenuItem>
         </DropdownMenuContent>
     </DropdownMenu>
 
