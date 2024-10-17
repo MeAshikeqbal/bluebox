@@ -17,7 +17,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Links />
       </head>
       <body
-        className="font-sans antialiased dark"
+        className="font-sans antialiased "
       >
         {children}
         <ScrollRestoration />
