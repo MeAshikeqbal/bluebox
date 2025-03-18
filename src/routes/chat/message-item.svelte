@@ -10,6 +10,7 @@
   // Local state
   let imageLoaded: boolean = false;
   let imageError: boolean = false;
+  let pdfPreviewUrl: string | null = null;
   
   // Format timestamp
   function formatTime(timestamp: number): string {
@@ -63,22 +64,37 @@
     imageError = true;
   }
   
-  // Convert attachments object to array for display
-  function getAttachmentsArray(attachments: { [key: string]: string } | undefined): string[] {
+  // Check if URL is a PDF
+  function isPdf(url: string): boolean {
+    return url.match(/\.pdf$/i) !== null;
+  }
+  
+  // Convert attachments to array
+  function getAttachmentsArray(attachments: string[] | { [key: string]: string } | undefined): string[] {
     if (!attachments) return [];
+    if (Array.isArray(attachments)) return attachments;
     return Object.values(attachments);
   }
   
-  // Check if message has image attachments
+  // Check file type
+  function getFileType(url: string): string {
+    if (url.match(/\.(jpeg|jpg|gif|png|webp)$/i)) return 'image';
+    if (url.match(/\.pdf$/i)) return 'pdf';
+    return 'other';
+  }
+  
   $: attachmentsArray = getAttachmentsArray(message.attachments);
   
-  $: hasImages = attachmentsArray.some(url => 
-    url.match(/\.(jpeg|jpg|gif|png|webp)$/i)
+  $: imageAttachments = attachmentsArray.filter(url => 
+    getFileType(url) === 'image'
   );
   
-  // Check if message has other attachments
-  $: hasOtherAttachments = attachmentsArray.some(url => 
-    !url.match(/\.(jpeg|jpg|gif|png|webp)$/i)
+  $: pdfAttachments = attachmentsArray.filter(url => 
+    getFileType(url) === 'pdf'
+  );
+  
+  $: otherAttachments = attachmentsArray.filter(url => 
+    getFileType(url) === 'other'
   );
   
   // Avatar color
@@ -112,11 +128,11 @@
         <div class="whitespace-pre-wrap break-words">{message.text}</div>
       {/if}
       
-      {#if hasImages}
+      {#if imageAttachments.length > 0}
         <div class={`${message.text ? 'mt-2' : ''} grid gap-2 ${
-          attachmentsArray.filter(url => url.match(/\.(jpeg|jpg|gif|png|webp)$/i)).length > 1 ? 'grid-cols-2' : 'grid-cols-1'
+          imageAttachments.length > 1 ? 'grid-cols-2' : 'grid-cols-1'
         }`}>
-          {#each attachmentsArray.filter(url => url.match(/\.(jpeg|jpg|gif|png|webp)$/i)) as imageUrl, i}
+          {#each imageAttachments as imageUrl, i}
             <div class="relative rounded-md overflow-hidden bg-slate-700/30">
               {#if !imageLoaded && !imageError}
                 <div class="absolute inset-0 flex items-center justify-center">
@@ -126,7 +142,7 @@
               
               <img 
                 src={imageUrl || "/placeholder.svg"} 
-                alt="Attachment" 
+                alt="Image attachment" 
                 class="w-full h-auto max-h-60 object-contain cursor-pointer hover:opacity-90 transition-opacity"
                 on:load={handleImageLoad}
                 on:error={handleImageError}
@@ -146,9 +162,41 @@
         </div>
       {/if}
       
-      {#if hasOtherAttachments}
-        <div class={`${message.text || hasImages ? 'mt-2' : ''} space-y-2`}>
-          {#each attachmentsArray.filter(url => !url.match(/\.(jpeg|jpg|gif|png|webp)$/i)) as fileUrl}
+      {#if pdfAttachments.length > 0}
+        <div class={`${message.text || imageAttachments.length > 0 ? 'mt-2' : ''} space-y-2`}>
+          {#each pdfAttachments as pdfUrl}
+            <div class="bg-slate-700/30 rounded-md overflow-hidden">
+              <div class="p-2 border-b border-slate-600/30 flex justify-between items-center">
+                <div class="flex items-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd" />
+                  </svg>
+                  <span class="text-sm truncate">{pdfUrl.split('/').pop()}</span>
+                </div>
+                <a 
+                  href={pdfUrl} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  class="ml-2 text-blue-400 hover:text-blue-300"
+                  download
+                  aria-label="Download PDF"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" />
+                  </svg>
+                </a>
+              </div>
+              <div class="p-2 h-48 bg-slate-800/50">
+                <iframe src={pdfUrl} title="PDF Preview" class="w-full h-full"></iframe>
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
+      
+      {#if otherAttachments.length > 0}
+        <div class={`${message.text || imageAttachments.length > 0 || pdfAttachments.length > 0 ? 'mt-2' : ''} space-y-2`}>
+          {#each otherAttachments as fileUrl}
             <div class="flex items-center p-2 rounded bg-slate-700/30 text-sm">
               <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 text-slate-400" viewBox="0 0 20 20" fill="currentColor">
                 <path fill-rule="evenodd" d="M8 4a3 3 0 00-3 3v4a5 5 0 0010 0V7a1 1 0 112 0v4a7 7 0 11-14 0V7a5 5 0 0110 0v4a3 3 0 11-6 0V7a1 1 0 012 0v4a1 1 0 102 0V7a3 3 0 00-3-3z" clip-rule="evenodd" />
@@ -160,7 +208,7 @@
                 rel="noopener noreferrer" 
                 class="ml-2 text-blue-400 hover:text-blue-300"
                 download
-                aria-label="Download attachment"
+                aria-label="Download file"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                   <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" />
@@ -198,3 +246,4 @@
     transition: opacity 0.3s ease;
   }
 </style>
+

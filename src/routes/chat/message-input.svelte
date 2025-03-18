@@ -8,8 +8,7 @@
   
   // Local state
   let text: string = '';
-  let attachments: { [key: string]: string } = {}; // Changed from array to object
-  let attachmentsList: string[] = []; // For UI display purposes
+  let attachments: { [key: string]: string } = {};
   let isUploading: boolean = false;
   let uploadProgress: number = 0;
   let showEmojiPicker: boolean = false;
@@ -32,7 +31,6 @@
     // Reset form
     text = '';
     attachments = {};
-    attachmentsList = [];
     showEmojiPicker = false;
     
     // Focus input after sending
@@ -75,35 +73,28 @@
           // In a real app, this would be the URL returned from your file upload service
           const url = URL.createObjectURL(file);
           const key = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-          
+        
           // Store in object format for Gun.js
           attachments[key] = url;
-          
-          // Update the list for UI display
-          attachmentsList = [...attachmentsList, url];
-        });
-        
-        // Reset file input
-        if (fileInputElement) {
-          fileInputElement.value = '';
-        }
+      });
+      
+      // Reset file input
+      if (fileInputElement) {
+        fileInputElement.value = '';
       }
-    }, 200);
-  }
+    }
+  }, 200);
+}
   
   // Remove attachment
   function removeAttachment(index: number) {
-    const url = attachmentsList[index];
-    
-    // Find and remove from the object
-    Object.keys(attachments).forEach(key => {
-      if (attachments[key] === url) {
-        delete attachments[key];
-      }
-    });
-    
-    // Update the list for UI
-    attachmentsList = attachmentsList.filter((_, i) => i !== index);
+    const keys = Object.keys(attachments);
+    if (index >= 0 && index < keys.length) {
+      const keyToRemove = keys[index];
+      const newAttachments = { ...attachments };
+      delete newAttachments[keyToRemove];
+      attachments = newAttachments;
+    }
   }
   
   // Toggle emoji picker
@@ -147,18 +138,24 @@
 
 <div class="relative">
   <!-- Attachments preview -->
-  {#if attachmentsList.length > 0}
+  {#if Object.keys(attachments).length > 0}
     <div 
       in:fly={{ y: 20, duration: 200 }}
       out:fade={{ duration: 150 }}
       class="mb-2 p-2 rounded-lg bg-slate-800/50 border border-slate-700/30"
     >
       <div class="flex flex-wrap gap-2">
-        {#each attachmentsList as attachment, i}
+        {#each Object.entries(attachments) as [key, attachment], i}
           <div class="relative group">
             {#if attachment.match(/\.(jpeg|jpg|gif|png|webp)$/i)}
               <div class="w-16 h-16 rounded-md overflow-hidden bg-slate-700/50">
                 <img src={attachment || "/placeholder.svg"} alt="Attachment" class="w-full h-full object-cover" />
+              </div>
+            {:else if attachment.match(/\.pdf$/i)}
+              <div class="w-16 h-16 rounded-md overflow-hidden bg-slate-700/50 flex items-center justify-center text-red-400">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
               </div>
             {:else}
               <div class="w-16 h-16 rounded-md overflow-hidden bg-slate-700/50 flex items-center justify-center text-slate-400">
@@ -183,7 +180,6 @@
     </div>
   {/if}
   
-  <!-- Rest of the component remains the same -->
   <!-- Upload progress -->
   {#if isUploading}
     <div 
@@ -272,7 +268,7 @@
     <button
       type="submit"
       class="rounded-r-lg bg-blue-600 p-3 text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800 disabled:opacity-50 disabled:hover:bg-blue-600"
-      disabled={disabled || (text.trim() === '' && attachmentsList.length === 0)} aria-label="Send message"
+      disabled={disabled || (text.trim() === '' && Object.keys(attachments).length === 0)} aria-label="Send message"
     >
       <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
         <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
@@ -280,3 +276,4 @@
     </button>
   </form>
 </div>
+

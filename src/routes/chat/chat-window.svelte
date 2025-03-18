@@ -25,6 +25,7 @@
   let lastReadTimestamp: number = 0;
   let initRetries: number = 0;
   let maxRetries: number = 3;
+  let activeUsers: number = 0;
   
   // Subscribe to user store
   const unsubscribeUser = user.subscribe(value => {
@@ -145,6 +146,13 @@
     }
   }
   
+  // Function to count active users
+  function countActiveUsers() {
+    if (!roomData || !roomData.members) return 0;
+    
+    return Object.values(roomData.members).filter(member => member.active).length;
+  }
+  
   // Initialize Gun.js and load messages
   function initChat() {
     console.log('Initializing chat, attempt:', initRetries + 1);
@@ -182,6 +190,17 @@
       if (room) {
         console.log('Room data loaded:', room);
         roomData = room;
+        
+        // Update active users count
+        activeUsers = countActiveUsers();
+        
+        // Set up listener for room data changes to update active users
+        gun.get('chatRooms').get(roomId).on((updatedRoom: ChatRoom) => {
+          if (updatedRoom && updatedRoom.members) {
+            roomData = updatedRoom;
+            activeUsers = countActiveUsers();
+          }
+        });
         
         // Get messages reference
         messagesRef = gun.get('chatMessages').get(roomId);
@@ -264,6 +283,7 @@
         
         gun.get('chatRooms').get(roomId).put(newRoom);
         roomData = newRoom;
+        activeUsers = 1; // Current user is active
         
         // Get messages reference
         messagesRef = gun.get('chatMessages').get(roomId);
@@ -327,7 +347,7 @@
         <h2 class="text-lg font-semibold text-white">{roomName}</h2>
         {#if roomData && roomData.members}
           <p class="text-xs text-slate-400">
-            {Object.keys(roomData.members).filter(m => roomData.members[m].active).length} active
+            {activeUsers} active
           </p>
         {/if}
       </div>
