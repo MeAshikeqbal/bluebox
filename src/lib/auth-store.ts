@@ -48,16 +48,18 @@ export function initGun(): { gun: any; user$: GunUser | null } {
           peers: ENV.GUN_PEERS, // Use peers from config
           localStorage: false,
           radisk: true,
-        })
+          })
+        }
 
         user$ = gun.user()
         initialized = true
 
-        // Check if user is already logged in
-        user$.recall({ sessionStorage: true }, (ack: any) => {
+        if (user$) {
+          user$.recall({ sessionStorage: true }, (ack: any) => {
+            console.log("User recall result:", ack)
           console.log("User recall result:", ack)
 
-          if (user$.is) {
+          if (user$ && user$.is) {
             console.log("User is authenticated, loading profile")
             user$.get("profile").once((profile: any) => {
               if (profile) {

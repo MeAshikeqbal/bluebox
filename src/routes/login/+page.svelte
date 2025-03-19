@@ -113,7 +113,7 @@
 	onMount(() => {
 		// Initialize Gun.js
 		gun = new (window as any).Gun({
-			peers: ['http://192.168.1.212:8765/gun'], // Replace with your Gun server
+			peers: ['http://192.168.1.7:8765/gun'], // Replace with your Gun server
 			localStorage: false, // Use IndexedDB instead of localStorage
 			radisk: true // Enable RadISK for better storage
 		});
