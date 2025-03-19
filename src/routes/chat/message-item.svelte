@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, createEventDispatcher } from 'svelte';
   import type { Message } from './types';
   import { ENV } from '../../lib/env-config';
   
@@ -12,6 +12,10 @@
   let imageLoaded: boolean = false;
   let imageError: boolean = false;
   let pdfPreviewUrl: string | null = null;
+  let showFullImage: boolean = false;
+  let previewImage: string | null = null;
+  
+  const dispatch = createEventDispatcher();
   
   // Format timestamp
   function formatTime(timestamp: number): string {
@@ -84,6 +88,20 @@
     return 'other';
   }
   
+  // Open image preview
+  function openImagePreview(url: string) {
+    previewImage = url;
+    showFullImage = true;
+  }
+  
+  // Close image preview
+  function closeImagePreview() {
+    showFullImage = false;
+    setTimeout(() => {
+      previewImage = null;
+    }, 300);
+  }
+  
   $: attachmentsArray = getAttachmentsArray(message.attachments);
   
   $: imageAttachments = attachmentsArray.filter(url => 
@@ -141,14 +159,21 @@
                 </div>
               {/if}
               
-              <img 
-                src={imageUrl || "/placeholder.svg"} 
-                alt="Image attachment" 
-                class="w-full h-auto max-h-60 object-contain cursor-pointer hover:opacity-90 transition-opacity"
-                on:load={handleImageLoad}
-                on:error={handleImageError}
+              <button 
+                type="button"
+                class="w-full h-auto max-h-60 object-contain cursor-pointer hover:opacity-90 transition-opacity p-0 border-0 bg-transparent"
+                on:click={() => openImagePreview(imageUrl)}
+                aria-label="Open image preview"
                 style={imageLoaded ? '' : 'opacity: 0;'}
-              />
+              >
+                <img 
+                  src={imageUrl || "/placeholder.svg"} 
+                  alt="Attachment"
+                  class="w-full h-auto"
+                  on:load={handleImageLoad}
+                  on:error={handleImageError}
+                />
+              </button>
               
               {#if imageError}
                 <div class="flex items-center justify-center h-32 bg-slate-700/30 text-slate-400 text-sm">
@@ -179,11 +204,11 @@
                   target="_blank" 
                   rel="noopener noreferrer" 
                   class="ml-2 text-blue-400 hover:text-blue-300"
-                  download
-                  aria-label="Download PDF"
+                  aria-label="View PDF"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                    <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" />
+                    <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+                    <path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd" />
                   </svg>
                 </a>
               </div>
@@ -241,10 +266,42 @@
   </div>
 </div>
 
+<!-- Full image preview modal -->
+{#if showFullImage && previewImage}
+  <div 
+    class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+    role="dialog"
+    aria-modal="true"
+    tabindex="0"
+    on:click={closeImagePreview}
+    on:keydown={(e) => e.key === 'Escape' && closeImagePreview()}
+  >
+    <div 
+      class="max-w-4xl max-h-[90vh] relative"
+      tabindex="0"
+      role="dialog"
+      on:click|stopPropagation={() => {}}
+      on:keydown|stopPropagation={(e) => e.key === 'Escape' && closeImagePreview()}    
+    >
+      <img 
+        src={previewImage || "/placeholder.svg"} 
+        alt="Full size preview" 
+        class="max-w-full max-h-[90vh] object-contain"
+      />
+      <button 
+        class="absolute top-2 right-2 bg-black/50 text-white rounded-full p-2 hover:bg-black/70"
+        on:click={closeImagePreview}
+        aria-label="Close preview"
+      >
+        ✕
+      </button>
+    </div>
+  </div>
+{/if}
+
 <style>
   /* Add any component-specific styles here */
   img {
     transition: opacity 0.3s ease;
   }
 </style>
-

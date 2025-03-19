@@ -27,6 +27,8 @@
   let initRetries: number = 0;
   let maxRetries: number = ENV.MAX_RETRIES;
   let activeUsers: number = 0;
+  let previewAttachment: string | null = null;
+  let showAttachmentPreview: boolean = false;
   
   // Subscribe to user store
   const unsubscribeUser = user.subscribe(value => {
@@ -164,6 +166,20 @@
     return Object.values(roomData.members).filter(member => member.active).length;
   }
   
+  // Handle attachment preview
+  function handleAttachmentPreview(event: CustomEvent<string>) {
+    previewAttachment = event.detail;
+    showAttachmentPreview = true;
+  }
+  
+  // Close attachment preview
+  function closeAttachmentPreview() {
+    showAttachmentPreview = false;
+    setTimeout(() => {
+      previewAttachment = null;
+    }, 300);
+  }
+  
   // Initialize Gun.js and load messages
   function initChat() {
     console.log('Initializing chat, attempt:', initRetries + 1);
@@ -216,7 +232,7 @@
         // Get messages reference
         messagesRef = gun.get('chatMessages').get(roomId);
         
-        // Subscribe to messages
+        // Subscribe to messages with real-time updates
         messagesRef.map().on((msg: Message, id: string) => {
           if (!msg || !id) return;
           
@@ -235,7 +251,7 @@
             processedMsg.attachments = attachmentsArray;
           }
           
-          // Update messages store
+          // Update messages store with real-time updates
           messages.update(msgs => {
             // Check if message already exists
             const existingIndex = msgs.findIndex(m => m.id === id);
@@ -260,6 +276,13 @@
                 }, 500);
               }
               
+              // Auto-scroll to bottom for new messages if we're already at the bottom
+              if (isAtBottom) {
+                setTimeout(() => {
+                  scrollToBottom();
+                }, 100);
+              }
+              
               return newMsgs;
             }
           });
@@ -280,6 +303,22 @@
         setTimeout(() => {
           scrollToBottom();
         }, 300);
+        
+        // Set up presence heartbeat
+        const heartbeatInterval = setInterval(() => {
+          if (currentUser && gun) {
+            gun.get('chatRooms').get(roomId).get('members').get(currentUser.username).put({
+              active: true,
+              lastActive: Date.now()
+            });
+          }
+        }, 30000); // Every 30 seconds
+        
+        // Clean up heartbeat on component destroy
+        onDestroy(() => {
+          clearInterval(heartbeatInterval);
+        });
+        
       } else {
         // Create room if it doesn't exist
         console.log('Creating new room:', roomId);
@@ -414,6 +453,7 @@
       <MessageList 
         messages={$messages} 
         currentUser={currentUser?.username || ''} 
+        on:previewAttachment={handleAttachmentPreview}
       />
       
       {#if !isAtBottom && unreadCount > 0}
@@ -450,6 +490,45 @@
     {/if}
   </div>
 </div>
+
+<!-- Attachment preview modal -->
+{#if showAttachmentPreview && previewAttachment}
+  <div 
+    class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+    on:click={closeAttachmentPreview}
+    on:keydown={(e) => e.key === 'Escape' && closeAttachmentPreview()}
+  >
+    <div 
+      class="max-w-4xl max-h-[90vh] relative"
+      on:click|stopPropagation={() => {}}
+    >
+      {#if previewAttachment.match(/\.(jpeg|jpg|gif|png|webp)$/i)}
+        <img 
+          src={previewAttachment || "/placeholder.svg"} 
+          alt="Full size preview" 
+          class="max-w-full max-h-[90vh] object-contain"
+        />
+      {:else if previewAttachment.match(/\.pdf$/i)}
+        <div class="bg-white p-2 rounded-lg">
+          <iframe 
+            src={previewAttachment} 
+            title="PDF Preview" 
+            class="w-full h-[80vh]"
+          ></iframe>
+        </div>
+      {/if}
+      <button 
+        class="absolute top-2 right-2 bg-black/50 text-white rounded-full p-2 hover:bg-black/70"
+        on:click={closeAttachmentPreview}
+        aria-label="Close preview"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+  </div>
+{/if}
 
 <style>
   /* Custom scrollbar for Webkit browsers */
