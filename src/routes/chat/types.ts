@@ -40,4 +40,3 @@ export interface UserPresence {
   online: boolean
   lastSeen: number
 }
-

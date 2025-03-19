@@ -1,98 +1,78 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { fade, fly } from 'svelte/transition';
-  import { getGun, user } from '../../lib/auth-store';
-  import MessageList from './message-list.svelte';
+  import { getGun, user } from '$lib/auth-store';
   import MessageInput from './message-input.svelte';
-  import { writable, type Writable } from 'svelte/store';
+  import MessageList from './message-list.svelte';
+  import { ENV } from '$lib/env-config';
   import type { Message, ChatRoom } from './types';
-  import { ENV } from '../../lib/env-config';
   
   // Props
-  export let roomId: string = ENV.DEFAULT_ROOM_ID;
-  export let roomName: string = ENV.DEFAULT_ROOM_NAME;
+  export let roomId: string;
+  export let roomName: string;
   
-  // Local state
-  let messages: Writable<Message[]> = writable([]);
+  // Reactive variables
+  let messages: Message[] = [];
+  let messageText: string = '';
+  let roomData: ChatRoom | null = null;
+  let activeUsers: number = 0;
   let isLoading: boolean = true;
   let error: string = '';
-  let currentUser: { username: string; email: string } | null = null;
   let gun: any;
   let messagesRef: any;
-  let roomData: ChatRoom | null = null;
-  let unreadCount: number = 0;
-  let isAtBottom: boolean = true;
-  let messageListElement: HTMLElement;
-  let lastReadTimestamp: number = 0;
-  let initRetries: number = 0;
-  let maxRetries: number = ENV.MAX_RETRIES;
-  let activeUsers: number = 0;
+  let heartbeatInterval: any;
   let previewAttachment: string | null = null;
   let showAttachmentPreview: boolean = false;
+  let messageListElement: HTMLElement;
+  let isAtBottom: boolean = true;
+  let unreadCount: number = 0;
   
-  // Subscribe to user store
-  const unsubscribeUser = user.subscribe(value => {
-    currentUser = value;
-    
-    // If user changes, try to reinitialize chat if needed
-    if (currentUser && error === 'You must be logged in to send messages') {
-      console.log('User logged in, reinitializing chat');
-      error = '';
-      initRetries = 0;
-      setTimeout(initChat, ENV.RETRY_DELAY / 4); // Wait a bit before initializing
-    }
-  });
-  
-  // Function to handle sending a new message
-  function handleSendMessage(event: CustomEvent<{ text: string; attachments?: { [key: string]: string } }>) {
-    if (!currentUser) {
+  // Functions
+  async function sendMessage(text: string, attachments?: { [key: string]: string }) {
+    if ((!text || !text.trim()) && (!attachments || Object.keys(attachments || {}).length === 0)) return;
+    if (!$user) {
       error = 'You must be logged in to send messages';
       return;
     }
     
-    if (!gun || !messagesRef) {
-      error = 'Chat not properly initialized. Please try again.';
-      return;
-    }
-    
-    const { text, attachments } = event.detail;
-    
-    if (!text.trim() && (!attachments || Object.keys(attachments).length === 0)) {
-      return;
-    }
-    
     try {
-      // Convert attachments object to a proper Gun.js compatible object
-      // This is the key fix - Gun.js doesn't handle arrays well, so we use an object
-      const attachmentsObj: Record<number, string> = {};
+      const messageId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       
-      if (attachments && Object.keys(attachments).length > 0) {
-        Object.entries(attachments).forEach(([key, url], index) => {
-          attachmentsObj[index] = url;
+      // Process attachments to ensure they're in a valid format
+      let processedAttachments: { [key: string]: string } = {};
+      if (attachments && typeof attachments === 'object') {
+        // Filter out any invalid attachments
+        Object.entries(attachments).forEach(([key, value]) => {
+          if (value && typeof value === 'string') {
+            processedAttachments[key] = value;
+          }
         });
       }
       
-      const messageData: Message = {
-        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        sender: currentUser.username,
+      const newMessage: Message = {
+        id: messageId,
         text: text.trim(),
+        sender: $user.username,
         timestamp: Date.now(),
-        attachments: attachmentsObj, // Use the object instead of array
         isRead: false
       };
       
-      // Save message to Gun.js
-      messagesRef.get(messageData.id).put(messageData);
+      // Only add attachments if there are any
+      if (Object.keys(processedAttachments).length > 0) {
+        newMessage.attachments = processedAttachments;
+      }
+      
+      // First put the message without attachments to avoid potential issues
+      messagesRef.get(messageId).put(newMessage);
       
       // Update room's last message
       if (roomData) {
         gun.get('chatRooms').get(roomId).put({
           lastMessage: {
             text: text.length > 30 ? text.substring(0, 30) + '...' : text,
-            sender: currentUser.username,
-            timestamp: messageData.timestamp
+            sender: $user.username,
+            timestamp: newMessage.timestamp
           },
-          updatedAt: messageData.timestamp
+          updatedAt: newMessage.timestamp
         });
       }
       
@@ -100,74 +80,69 @@
       setTimeout(() => {
         scrollToBottom();
       }, 100);
-      
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error sending message:', err);
-      error = `Failed to send message: ${err.message || 'Unknown error'}`;
+      error = `Failed to send message: ${err instanceof Error ? err.message : 'Unknown error'}`;
     }
   }
   
-  // Function to mark messages as read
-  function markMessagesAsRead() {
-    if (!currentUser || !ENV.ENABLE_READ_RECEIPTS) return;
-    
-    messages.update(msgs => {
-      const updatedMsgs = msgs.map(msg => {
-        if (!msg.isRead && msg.sender !== currentUser?.username) {
-          // Update in Gun.js
-          messagesRef.get(msg.id).put({ isRead: true });
-          // Update locally
-          return { ...msg, isRead: true };
-        }
-        return msg;
-      });
-      return updatedMsgs;
-    });
-    
-    // Update last read timestamp
-    lastReadTimestamp = Date.now();
-    if (roomData && gun) {
-      gun.get('chatRooms').get(roomId).get('members').get(currentUser.username).put({
-        lastRead: lastReadTimestamp
+  function leaveChat() {
+    if ($user && gun) {
+      gun.get('chatRooms').get(roomId).get('members').get($user.username).put({
+        active: false,
+        lastActive: Date.now()
       });
     }
-    
-    // Reset unread count
-    unreadCount = 0;
   }
   
-  // Function to handle scroll events
-  function handleScroll(e: Event) {
-    const target = e.target as HTMLElement;
-    const { scrollTop, scrollHeight, clientHeight } = target;
-    
-    // Check if scrolled to bottom
-    isAtBottom = Math.abs(scrollHeight - clientHeight - scrollTop) < 10;
-    
-    // Mark messages as read when scrolled to bottom
-    if (isAtBottom) {
-      markMessagesAsRead();
-    }
-  }
-  
-  // Function to scroll to bottom
-  function scrollToBottom() {
-    if (messageListElement) {
-      messageListElement.scrollTop = messageListElement.scrollHeight;
-      isAtBottom = true;
-      markMessagesAsRead();
-    }
-  }
-  
-  // Function to count active users
   function countActiveUsers() {
     if (!roomData || !roomData.members) return 0;
+  
+    // Consider a user active if they've been active in the last 5 minutes
+    const activeTimeThreshold = Date.now() - (5 * 60 * 1000);
+  
+    let count = 0;
+  
+    // Iterate through members and count active ones
+    Object.entries(roomData.members).forEach(([username, member]) => {
+      if (member && (
+        (typeof member.active === 'boolean' && member.active === true) || 
+        (typeof member.lastActive === 'number' && member.lastActive > activeTimeThreshold)
+      )) {
+        count++;
+      }
+    });
+  
+    return count;
+  }
+  
+  function debugRoomMembers() {
+    if (!roomData || !roomData.members) {
+      console.log('No room data or members available');
+      return;
+    }
     
-    return Object.values(roomData.members).filter(member => member.active).length;
+    console.log('Room members:', roomData.members);
+    
+    const activeTimeThreshold = Date.now() - (5 * 60 * 1000);
+    const activeMembers = Object.entries(roomData.members).filter(([username, member]) => 
+      member && (
+        (typeof member.active === 'boolean' && member.active === true) || 
+        (typeof member.lastActive === 'number' && member.lastActive > activeTimeThreshold)
+      )
+    );
+    
+    console.log('Active members:', activeMembers);
+    console.log('Active count:', activeMembers.length);
+  }
+  
+  function handleSendMessage(event: CustomEvent<{ text: string; attachments?: { [key: string]: string } }>) {
+    const { text, attachments } = event.detail;
+    sendMessage(text, attachments);
   }
   
   // Handle attachment preview
-  function handleAttachmentPreview(event: CustomEvent<string>) {
+  function handleAttachmentPreview(event: { detail: string | null; }) {
     previewAttachment = event.detail;
     showAttachmentPreview = true;
   }
@@ -180,52 +155,81 @@
     }, 300);
   }
   
-  // Initialize Gun.js and load messages
-  function initChat() {
-    console.log('Initializing chat, attempt:', initRetries + 1);
+  // Function to handle scroll events
+  function handleScroll(e: { target: any; }) {
+    const target = e.target;
+    if (!target) return;
     
-    if (initRetries >= maxRetries) {
-      error = 'Failed to initialize chat after multiple attempts. Please reload the page.';
-      isLoading = false;
-      return;
+    const { scrollTop, scrollHeight, clientHeight } = target;
+    
+    // Check if scrolled to bottom
+    isAtBottom = Math.abs(scrollHeight - clientHeight - scrollTop) < 10;
+    
+    // Mark messages as read when scrolled to bottom
+    if (isAtBottom && messagesRef && $user) {
+      markMessagesAsRead();
+    }
+  }
+  
+  // Function to mark messages as read
+  function markMessagesAsRead() {
+    if (!$user || !messagesRef) return;
+    
+    messages.forEach(msg => {
+      if (!msg.isRead && msg.sender !== $user?.username) {
+        // Update in Gun.js
+        messagesRef.get(msg.id).put({ isRead: true });
+      }
+    });
+    
+    // Update last read timestamp
+    if (roomData && gun && $user) {
+      gun.get('chatRooms').get(roomId).get('members').get($user.username).put({
+        lastRead: Date.now()
+      });
     }
     
-    const { gun: gunInstance, user$ } = getGun();
+    // Reset unread count
+    unreadCount = 0;
+  }
+  
+  // Function to scroll to bottom
+  function scrollToBottom() {
+    if (messageListElement) {
+      messageListElement.scrollTop = messageListElement.scrollHeight;
+      isAtBottom = true;
+      
+      // Mark messages as read
+      if (messagesRef && $user) {
+        markMessagesAsRead();
+      }
+    }
+  }
+  
+  async function initChat() {
+    const { gun: gunInstance } = getGun();
     gun = gunInstance;
     
-    if (!gun || !user$) {
+    if (!gun) {
       error = 'Failed to initialize chat. Please try again.';
       isLoading = false;
-      
-      // Retry initialization after a delay
-      initRetries++;
-      setTimeout(initChat, ENV.RETRY_DELAY);
       return;
     }
     
-    if (!user$.is) {
-      console.log('User not authenticated in Gun.js');
-      error = 'You must be logged in to send messages';
-      isLoading = false;
-      return;
-    }
-    
-    console.log('Gun initialized, loading chat room:', roomId);
-    
-    // Get room data
-    gun.get('chatRooms').get(roomId).once((room: ChatRoom) => {
+    // Load initial room data
+    gun.get('chatRooms').get(roomId).once((room: ChatRoom | null) => {
       if (room) {
-        console.log('Room data loaded:', room);
         roomData = room;
-        
-        // Update active users count
         activeUsers = countActiveUsers();
+        debugRoomMembers();
         
         // Set up listener for room data changes to update active users
-        gun.get('chatRooms').get(roomId).on((updatedRoom: ChatRoom) => {
-          if (updatedRoom && updatedRoom.members) {
+        gun.get('chatRooms').get(roomId).on((updatedRoom: ChatRoom | null) => {
+          if (updatedRoom) {
             roomData = updatedRoom;
+            // Force recalculation of active users
             activeUsers = countActiveUsers();
+            console.log('Updated active users count:', activeUsers);
           }
         });
         
@@ -233,68 +237,83 @@
         messagesRef = gun.get('chatMessages').get(roomId);
         
         // Subscribe to messages with real-time updates
-        messagesRef.map().on((msg: Message, id: string) => {
+        messagesRef.map().on((msg: { id: any; text: any; sender: string | undefined; timestamp: any; isRead: any; attachments: string[] | { [key: string]: string; } | undefined; }, id: string) => {
           if (!msg || !id) return;
           
-          // Add ID to message if not present
-          if (!msg.id) {
-            msg.id = id;
-            messagesRef.get(id).put({ id });
-          }
-          
-          // Process attachments - convert from Gun.js object to array if needed
-          let processedMsg = { ...msg };
-          
-          if (msg.attachments && typeof msg.attachments === 'object' && !Array.isArray(msg.attachments)) {
-            // Convert object to array for UI consumption
-            const attachmentsArray = Object.values(msg.attachments);
-            processedMsg.attachments = attachmentsArray;
-          }
-          
-          // Update messages store with real-time updates
-          messages.update(msgs => {
-            // Check if message already exists
-            const existingIndex = msgs.findIndex(m => m.id === id);
-            
-            if (existingIndex >= 0) {
-              // Update existing message
-              msgs[existingIndex] = { ...msgs[existingIndex], ...processedMsg };
-              return [...msgs];
-            } else {
-              // Add new message
-              const newMsgs = [...msgs, processedMsg].sort((a, b) => a.timestamp - b.timestamp);
-              
-              // Increment unread count if not at bottom and not from current user
-              if (!isAtBottom && msg.sender !== currentUser?.username && !msg.isRead) {
-                unreadCount++;
-              }
-              
-              // If at bottom, mark as read
-              if (isAtBottom && msg.sender !== currentUser?.username && !msg.isRead && ENV.ENABLE_READ_RECEIPTS) {
-                setTimeout(() => {
-                  messagesRef.get(id).put({ isRead: true });
-                }, 500);
-              }
-              
-              // Auto-scroll to bottom for new messages if we're already at the bottom
-              if (isAtBottom) {
-                setTimeout(() => {
-                  scrollToBottom();
-                }, 100);
-              }
-              
-              return newMsgs;
+          try {
+            // Add ID to message if not present
+            if (!msg.id) {
+              msg.id = id;
+              messagesRef.get(id).put({ id });
             }
-          });
+            
+            // Ensure message has all required fields
+            const validMessage: Message = {
+              id: msg.id || id,
+              text: msg.text || '',
+              sender: msg.sender || 'Unknown',
+              timestamp: msg.timestamp || Date.now(),
+              isRead: msg.isRead || false
+            };
+            
+            // Only add attachments if they exist
+            if (msg.attachments) {
+              validMessage.attachments = msg.attachments;
+            }
+            
+            // Update messages array
+            messages = [...messages.filter(m => m.id !== id), validMessage]
+              .sort((a, b) => a.timestamp - b.timestamp);
+            
+            // Increment unread count if not at bottom and not from current user
+            if (!isAtBottom && msg.sender !== $user?.username && !msg.isRead) {
+              unreadCount++;
+            }
+            
+            // If at bottom, mark as read
+            if (isAtBottom && msg.sender !== $user?.username && !msg.isRead) {
+              setTimeout(() => {
+                messagesRef.get(id).put({ isRead: true });
+              }, 500);
+            }
+            
+            // Auto-scroll to bottom for new messages if we're already at the bottom
+            if (isAtBottom) {
+              setTimeout(() => {
+                scrollToBottom();
+              }, 100);
+            }
+          } catch (error) {
+            console.error('Error processing message:', error, msg);
+          }
         });
         
-        // Mark user as active in room
-        if (currentUser) {
-          gun.get('chatRooms').get(roomId).get('members').get(currentUser.username).put({
+        // Add user to the room's member list if logged in
+        if ($user) {
+          gun.get('chatRooms').get(roomId).get('members').get($user.username).put({
             active: true,
-            lastActive: Date.now()
+            lastActive: Date.now(),
+            lastRead: Date.now(),
+            joined: Date.now()
           });
         }
+        
+        // Set up presence heartbeat
+        heartbeatInterval = setInterval(() => {
+          if ($user && gun) {
+            // Update user's active status
+            gun.get('chatRooms').get(roomId).get('members').get($user.username).put({
+              active: true,
+              lastActive: Date.now()
+            });
+            
+            // Force recalculation of active users
+            if (roomData) {
+              activeUsers = countActiveUsers();
+              console.log('Heartbeat active users count:', activeUsers);
+            }
+          }
+        }, 30000); // Every 30 seconds
         
         isLoading = false;
         error = '';
@@ -303,25 +322,8 @@
         setTimeout(() => {
           scrollToBottom();
         }, 300);
-        
-        // Set up presence heartbeat
-        const heartbeatInterval = setInterval(() => {
-          if (currentUser && gun) {
-            gun.get('chatRooms').get(roomId).get('members').get(currentUser.username).put({
-              active: true,
-              lastActive: Date.now()
-            });
-          }
-        }, 30000); // Every 30 seconds
-        
-        // Clean up heartbeat on component destroy
-        onDestroy(() => {
-          clearInterval(heartbeatInterval);
-        });
-        
       } else {
         // Create room if it doesn't exist
-        console.log('Creating new room:', roomId);
         const newRoom: ChatRoom = {
           id: roomId,
           name: roomName,
@@ -331,8 +333,8 @@
           lastMessage: null
         };
         
-        if (currentUser) {
-          newRoom.members[currentUser.username] = {
+        if ($user) {
+          newRoom.members[$user.username] = {
             joined: Date.now(),
             lastRead: Date.now(),
             active: true,
@@ -342,7 +344,7 @@
         
         gun.get('chatRooms').get(roomId).put(newRoom);
         roomData = newRoom;
-        activeUsers = 1; // Current user is active
+        activeUsers = $user ? 1 : 0;
         
         // Get messages reference
         messagesRef = gun.get('chatMessages').get(roomId);
@@ -352,43 +354,15 @@
     });
   }
   
-  // Function to clean up when component is destroyed
-  function cleanup() {
-    // Mark user as inactive in room
-    if (currentUser && roomData && gun) {
-      gun.get('chatRooms').get(roomId).get('members').get(currentUser.username).put({
-        active: false,
-        lastActive: Date.now()
-      });
-    }
-    
-    // Unsubscribe from Gun.js listeners
-    if (messagesRef) {
-      messagesRef.off();
-    }
-  }
-  
   onMount(() => {
-    // Wait a bit to ensure auth is initialized
-    setTimeout(() => {
-      initChat();
-    }, ENV.RETRY_DELAY / 4);
-    
-    // Set up interval to check for new messages
-    const interval = setInterval(() => {
-      if (!isAtBottom && unreadCount > 0) {
-        // Notify user of new messages
-      }
-    }, ENV.MESSAGE_POLL_INTERVAL);
-    
-    return () => {
-      clearInterval(interval);
-    };
+    initChat();
   });
   
   onDestroy(() => {
-    unsubscribeUser();
-    cleanup();
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval);
+    }
+    leaveChat();
   });
 </script>
 
@@ -404,23 +378,10 @@
       </div>
       <div class="ml-3">
         <h2 class="text-lg font-semibold text-white">{roomName}</h2>
-        {#if roomData && roomData.members}
-          <p class="text-xs text-slate-400">
-            {activeUsers} active
-          </p>
-        {/if}
+        <p class="text-xs text-slate-400">
+          {activeUsers} active
+        </p>
       </div>
-    </div>
-    
-    <div class="flex items-center">
-      <button 
-        class="p-2 rounded-full text-slate-400 hover:text-white hover:bg-slate-700/50 focus:outline-none"
-        aria-label="Room information"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-          <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
-        </svg>
-      </button>
     </div>
   </div>
   
@@ -443,7 +404,7 @@
           <p>{error}</p>
           <button 
             class="mt-2 px-4 py-2 bg-red-500/30 hover:bg-red-500/40 rounded-md text-sm font-medium"
-            on:click={() => { error = ''; initRetries = 0; initChat(); }}
+            on:click={() => { error = ''; initChat(); }}
           >
             Try Again
           </button>
@@ -451,19 +412,15 @@
       </div>
     {:else}
       <MessageList 
-        messages={$messages} 
-        currentUser={currentUser?.username || ''} 
+        messages={messages} 
+        currentUser={$user?.username || ''} 
         on:previewAttachment={handleAttachmentPreview}
       />
       
       {#if !isAtBottom && unreadCount > 0}
         <button 
-          in:fade={{ duration: 200 }}
-          out:fade={{ duration: 200 }}
           class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-blue-500 text-white px-4 py-2 rounded-full shadow-lg cursor-pointer"
           on:click={scrollToBottom}
-          on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') scrollToBottom(); }}
-          aria-label="Scroll to bottom"
         >
           <div class="flex items-center">
             <span class="mr-2">{unreadCount} new {unreadCount === 1 ? 'message' : 'messages'}</span>
@@ -480,10 +437,10 @@
   <div class="p-4 bg-slate-800/30 border-t border-slate-700/20">
     <MessageInput 
       on:sendMessage={handleSendMessage} 
-      disabled={!currentUser || isLoading || !!error || !ENV.ENABLE_FILE_UPLOADS} 
+      disabled={!$user || isLoading || !!error} 
     />
     
-    {#if !currentUser}
+    {#if !$user}
       <div class="mt-2 text-center text-red-300 text-sm">
         You must be logged in to send messages
       </div>
@@ -530,23 +487,3 @@
   </div>
 {/if}
 
-<style>
-  /* Custom scrollbar for Webkit browsers */
-  ::-webkit-scrollbar {
-    width: 6px;
-  }
-  
-  ::-webkit-scrollbar-track {
-    background: rgba(15, 23, 42, 0.1);
-    border-radius: 10px;
-  }
-  
-  ::-webkit-scrollbar-thumb {
-    background: rgba(148, 163, 184, 0.2);
-    border-radius: 10px;
-  }
-  
-  ::-webkit-scrollbar-thumb:hover {
-    background: rgba(148, 163, 184, 0.3);
-  }
-</style>

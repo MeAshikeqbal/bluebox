@@ -1,19 +1,16 @@
 <script lang="ts">
-  import { onMount, createEventDispatcher } from 'svelte';
+  import { createEventDispatcher } from 'svelte';
   import type { Message } from './types';
-  import { ENV } from '../../lib/env-config';
   
+
   // Props
   export let message: Message;
   export let isCurrentUser: boolean = false;
   export let isGrouped: boolean = false;
   
   // Local state
-  let imageLoaded: boolean = false;
-  let imageError: boolean = false;
-  let pdfPreviewUrl: string | null = null;
-  let showFullImage: boolean = false;
-  let previewImage: string | null = null;
+  let imageLoaded: Record<string, boolean> = {};
+  let imageError: Record<string, boolean> = {};
   
   const dispatch = createEventDispatcher();
   
@@ -60,49 +57,80 @@
   }
   
   // Handle image load
-  function handleImageLoad() {
-    imageLoaded = true;
+  function handleImageLoad(url: string) {
+    imageLoaded[url] = true;
   }
   
   // Handle image error
-  function handleImageError() {
-    imageError = true;
-  }
-  
-  // Check if URL is a PDF
-  function isPdf(url: string): boolean {
-    return url.match(/\.pdf$/i) !== null;
-  }
-  
-  // Convert attachments to array
-  function getAttachmentsArray(attachments: string[] | { [key: string]: string } | undefined): string[] {
-    if (!attachments) return [];
-    if (Array.isArray(attachments)) return attachments;
-    return Object.values(attachments);
-  }
-  
-  // Check file type
-  function getFileType(url: string): string {
-    if (url.match(/\.(jpeg|jpg|gif|png|webp)$/i)) return 'image';
-    if (url.match(/\.pdf$/i)) return 'pdf';
-    return 'other';
+  function handleImageError(url: string) {
+    imageError[url] = true;
+    imageLoaded[url] = true; // Prevent indefinite loading state
   }
   
   // Open image preview
   function openImagePreview(url: string) {
-    previewImage = url;
-    showFullImage = true;
+    dispatch('previewAttachment', url);
   }
   
-  // Close image preview
-  function closeImagePreview() {
-    showFullImage = false;
-    setTimeout(() => {
-      previewImage = null;
-    }, 300);
+  // Update the getFileType function to be more robust
+  function getFileType(url: string): string {
+    if (!url || typeof url !== 'string') return 'other';
+    
+    // Check for image file extensions
+    if (url.match(/\.(jpeg|jpg|gif|png|webp|bmp|svg)$/i)) return 'image';
+    
+    // Check for image URLs that might not have extensions
+    if (url.includes('image/') || url.includes('/img/') || url.includes('photos')) return 'image';
+    
+    // Check for PDF files
+    if (url.match(/\.pdf$/i)) return 'pdf';
+    
+    return 'other';
+  }
+
+  // Update the getAttachmentsArray function to handle all possible attachment formats
+  function getAttachmentsArray(attachments: any): string[] {
+    // If attachments is undefined or null, return empty array
+    if (!attachments) return [];
+    
+    try {
+      // If it's already an array, filter out any non-string values
+      if (Array.isArray(attachments)) {
+        return attachments.filter(url => url && typeof url === 'string');
+      }
+      
+      // If it's an object, extract values
+      if (typeof attachments === 'object') {
+        // Get all values from the object
+        const urls = Object.values(attachments);
+        
+        // Filter out any non-string values
+        return (urls as unknown[]).filter(url => typeof url === 'string') as string[];
+      }
+      
+      // If it's a string (single attachment), return as array
+      if (typeof attachments === 'string') {
+        return [attachments];
+      }
+    } catch (error) {
+      console.error('Error processing attachments:', error);
+    }
+    
+    // Default to empty array if anything goes wrong
+    return [];
   }
   
-  $: attachmentsArray = getAttachmentsArray(message.attachments);
+  // Safely get attachments array with error handling
+  function safeGetAttachments() {
+    try {
+      return getAttachmentsArray(message.attachments);
+    } catch (error) {
+      console.error('Error getting attachments:', error, message);
+      return [];
+    }
+  }
+  
+  $: attachmentsArray = safeGetAttachments();
   
   $: imageAttachments = attachmentsArray.filter(url => 
     getFileType(url) === 'image'
@@ -153,7 +181,7 @@
         }`}>
           {#each imageAttachments as imageUrl, i}
             <div class="relative rounded-md overflow-hidden bg-slate-700/30">
-              {#if !imageLoaded && !imageError}
+              {#if !imageLoaded[imageUrl]}
                 <div class="absolute inset-0 flex items-center justify-center">
                   <div class="w-6 h-6 border-2 border-slate-400 border-t-transparent rounded-full animate-spin"></div>
                 </div>
@@ -163,19 +191,20 @@
                 type="button"
                 class="w-full h-auto max-h-60 object-contain cursor-pointer hover:opacity-90 transition-opacity p-0 border-0 bg-transparent"
                 on:click={() => openImagePreview(imageUrl)}
-                aria-label="Open image preview"
-                style={imageLoaded ? '' : 'opacity: 0;'}
+                on:keydown={(e) => e.key === 'Enter' && openImagePreview(imageUrl)}
+                style={imageLoaded[imageUrl] ? '' : 'opacity: 0;'}
+                aria-label="View attachment"
               >
                 <img 
                   src={imageUrl || "/placeholder.svg"} 
                   alt="Attachment"
                   class="w-full h-auto"
-                  on:load={handleImageLoad}
-                  on:error={handleImageError}
+                  on:load={() => handleImageLoad(imageUrl)}
+                  on:error={() => handleImageError(imageUrl)}
                 />
               </button>
               
-              {#if imageError}
+              {#if imageError[imageUrl]}
                 <div class="flex items-center justify-center h-32 bg-slate-700/30 text-slate-400 text-sm">
                   <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
                     <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
@@ -199,21 +228,30 @@
                   </svg>
                   <span class="text-sm truncate">{pdfUrl.split('/').pop()}</span>
                 </div>
-                <a 
-                  href={pdfUrl} 
-                  target="_blank" 
-                  rel="noopener noreferrer" 
-                  class="ml-2 text-blue-400 hover:text-blue-300"
-                  aria-label="View PDF"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                    <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
-                    <path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd" />
-                  </svg>
-                </a>
-              </div>
-              <div class="p-2 h-48 bg-slate-800/50">
-                <iframe src={pdfUrl} title="PDF Preview" class="w-full h-full"></iframe>
+                <div class="flex items-center gap-2">
+                  <button 
+                    on:click={() => openImagePreview(pdfUrl)}
+                    class="text-blue-400 hover:text-blue-300"
+                    aria-label="View PDF"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                      <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+                      <path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd" />
+                    </svg>
+                  </button>
+                  <a 
+                    href={pdfUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    download
+                    class="text-blue-400 hover:text-blue-300"
+                    aria-label="Download PDF"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                      <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" />
+                    </svg>
+                  </a>
+                </div>
               </div>
             </div>
           {/each}
@@ -232,8 +270,8 @@
                 href={fileUrl} 
                 target="_blank" 
                 rel="noopener noreferrer" 
-                class="ml-2 text-blue-400 hover:text-blue-300"
                 download
+                class="ml-2 text-blue-400 hover:text-blue-300"
                 aria-label="Download file"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
@@ -249,7 +287,7 @@
     <div class="flex items-center mt-1 text-xs text-slate-500">
       <span>{formatTime(message.timestamp)}</span>
       
-      {#if isCurrentUser && ENV.ENABLE_READ_RECEIPTS}
+      {#if isCurrentUser}
         <span class="ml-2 flex items-center">
           {#if message.isRead}
             <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
@@ -266,42 +304,10 @@
   </div>
 </div>
 
-<!-- Full image preview modal -->
-{#if showFullImage && previewImage}
-  <div 
-    class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
-    role="dialog"
-    aria-modal="true"
-    tabindex="0"
-    on:click={closeImagePreview}
-    on:keydown={(e) => e.key === 'Escape' && closeImagePreview()}
-  >
-    <div 
-      class="max-w-4xl max-h-[90vh] relative"
-      tabindex="0"
-      role="dialog"
-      on:click|stopPropagation={() => {}}
-      on:keydown|stopPropagation={(e) => e.key === 'Escape' && closeImagePreview()}    
-    >
-      <img 
-        src={previewImage || "/placeholder.svg"} 
-        alt="Full size preview" 
-        class="max-w-full max-h-[90vh] object-contain"
-      />
-      <button 
-        class="absolute top-2 right-2 bg-black/50 text-white rounded-full p-2 hover:bg-black/70"
-        on:click={closeImagePreview}
-        aria-label="Close preview"
-      >
-        ✕
-      </button>
-    </div>
-  </div>
-{/if}
-
 <style>
-  /* Add any component-specific styles here */
+  /* Component-specific styles */
   img {
     transition: opacity 0.3s ease;
   }
 </style>
+
