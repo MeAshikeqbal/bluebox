@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { Message } from './types';
+  import { ENV } from '../../lib/env-config';
   
   // Props
   export let message: Message;
@@ -223,7 +224,7 @@
     <div class="flex items-center mt-1 text-xs text-slate-500">
       <span>{formatTime(message.timestamp)}</span>
       
-      {#if isCurrentUser}
+      {#if isCurrentUser && ENV.ENABLE_READ_RECEIPTS}
         <span class="ml-2 flex items-center">
           {#if message.isRead}
             <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
