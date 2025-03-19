@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, afterUpdate,createEventDispatcher } from 'svelte';
+  import { onMount, afterUpdate, createEventDispatcher } from 'svelte';
   import { fly, fade } from 'svelte/transition';
   import MessageItem from './message-item.svelte';
   import { ENV } from '../../lib/env-config';
@@ -52,7 +52,7 @@
   function shouldGroupMessages(current: Message, previous: Message | null): boolean {
     if (!previous) return false;
     
-    // Group if same sender and within 2 minutes
+    // Group if same sender and within configured timeframe
     return (
       current.sender === previous.sender && 
       current.timestamp - previous.timestamp < ENV.MESSAGE_POLL_INTERVAL

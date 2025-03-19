@@ -6,10 +6,11 @@
   import MessageInput from './message-input.svelte';
   import { writable, type Writable } from 'svelte/store';
   import type { Message, ChatRoom } from './types';
+  import { ENV } from '../../lib/env-config';
   
   // Props
-  export let roomId: string = 'general';
-  export let roomName: string = 'General Chat';
+  export let roomId: string = ENV.DEFAULT_ROOM_ID;
+  export let roomName: string = ENV.DEFAULT_ROOM_NAME;
   
   // Local state
   let messages: Writable<Message[]> = writable([]);
@@ -24,7 +25,7 @@
   let messageListElement: HTMLElement;
   let lastReadTimestamp: number = 0;
   let initRetries: number = 0;
-  let maxRetries: number = 3;
+  let maxRetries: number = ENV.MAX_RETRIES;
   let activeUsers: number = 0;
   
   // Subscribe to user store
@@ -36,12 +37,12 @@
       console.log('User logged in, reinitializing chat');
       error = '';
       initRetries = 0;
-      setTimeout(initChat, 500); // Wait a bit before initializing
+      setTimeout(initChat, ENV.RETRY_DELAY / 4); // Wait a bit before initializing
     }
   });
   
   // Function to handle sending a new message
-  function handleSendMessage(event: CustomEvent<{ text: string; attachments?: string[] }>) {
+  function handleSendMessage(event: CustomEvent<{ text: string; attachments?: { [key: string]: string } }>) {
     if (!currentUser) {
       error = 'You must be logged in to send messages';
       return;
@@ -54,17 +55,27 @@
     
     const { text, attachments } = event.detail;
     
-    if (!text.trim() && (!attachments || attachments.length === 0)) {
+    if (!text.trim() && (!attachments || Object.keys(attachments).length === 0)) {
       return;
     }
     
     try {
+      // Convert attachments object to a proper Gun.js compatible object
+      // This is the key fix - Gun.js doesn't handle arrays well, so we use an object
+      const attachmentsObj: Record<number, string> = {};
+      
+      if (attachments && Object.keys(attachments).length > 0) {
+        Object.entries(attachments).forEach(([key, url], index) => {
+          attachmentsObj[index] = url;
+        });
+      }
+      
       const messageData: Message = {
         id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         sender: currentUser.username,
         text: text.trim(),
         timestamp: Date.now(),
-        attachments: attachments || [],
+        attachments: attachmentsObj, // Use the object instead of array
         isRead: false
       };
       
@@ -96,7 +107,7 @@
   
   // Function to mark messages as read
   function markMessagesAsRead() {
-    if (!currentUser) return;
+    if (!currentUser || !ENV.ENABLE_READ_RECEIPTS) return;
     
     messages.update(msgs => {
       const updatedMsgs = msgs.map(msg => {
@@ -172,7 +183,7 @@
       
       // Retry initialization after a delay
       initRetries++;
-      setTimeout(initChat, 2000);
+      setTimeout(initChat, ENV.RETRY_DELAY);
       return;
     }
     
@@ -215,6 +226,15 @@
             messagesRef.get(id).put({ id });
           }
           
+          // Process attachments - convert from Gun.js object to array if needed
+          let processedMsg = { ...msg };
+          
+          if (msg.attachments && typeof msg.attachments === 'object' && !Array.isArray(msg.attachments)) {
+            // Convert object to array for UI consumption
+            const attachmentsArray = Object.values(msg.attachments);
+            processedMsg.attachments = attachmentsArray;
+          }
+          
           // Update messages store
           messages.update(msgs => {
             // Check if message already exists
@@ -222,11 +242,11 @@
             
             if (existingIndex >= 0) {
               // Update existing message
-              msgs[existingIndex] = { ...msgs[existingIndex], ...msg };
+              msgs[existingIndex] = { ...msgs[existingIndex], ...processedMsg };
               return [...msgs];
             } else {
               // Add new message
-              const newMsgs = [...msgs, msg].sort((a, b) => a.timestamp - b.timestamp);
+              const newMsgs = [...msgs, processedMsg].sort((a, b) => a.timestamp - b.timestamp);
               
               // Increment unread count if not at bottom and not from current user
               if (!isAtBottom && msg.sender !== currentUser?.username && !msg.isRead) {
@@ -234,7 +254,7 @@
               }
               
               // If at bottom, mark as read
-              if (isAtBottom && msg.sender !== currentUser?.username && !msg.isRead) {
+              if (isAtBottom && msg.sender !== currentUser?.username && !msg.isRead && ENV.ENABLE_READ_RECEIPTS) {
                 setTimeout(() => {
                   messagesRef.get(id).put({ isRead: true });
                 }, 500);
@@ -313,14 +333,14 @@
     // Wait a bit to ensure auth is initialized
     setTimeout(() => {
       initChat();
-    }, 500);
+    }, ENV.RETRY_DELAY / 4);
     
     // Set up interval to check for new messages
     const interval = setInterval(() => {
       if (!isAtBottom && unreadCount > 0) {
         // Notify user of new messages
       }
-    }, 5000);
+    }, ENV.MESSAGE_POLL_INTERVAL);
     
     return () => {
       clearInterval(interval);
@@ -420,7 +440,7 @@
   <div class="p-4 bg-slate-800/30 border-t border-slate-700/20">
     <MessageInput 
       on:sendMessage={handleSendMessage} 
-      disabled={!currentUser || isLoading || !!error} 
+      disabled={!currentUser || isLoading || !!error || !ENV.ENABLE_FILE_UPLOADS} 
     />
     
     {#if !currentUser}

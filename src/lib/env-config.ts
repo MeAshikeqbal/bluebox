@@ -5,7 +5,7 @@ export const ENV = {
   DEFAULT_ROOM_NAME: import.meta.env.VITE_DEFAULT_ROOM_NAME || 'General Chat',
   
   // Gun.js configuration
-  GUN_PEERS: (import.meta.env.VITE_GUN_PEERS || 'https://gun-manhattan.herokuapp.com/gun')
+  GUN_PEERS: (import.meta.env.VITE_GUN_PEERS || 'http://192.168.1.212:8765/gun')
     .split(',')
     .map((peer: string) => peer.trim()),
   
