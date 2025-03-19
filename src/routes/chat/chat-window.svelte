@@ -397,11 +397,13 @@
       />
       
       {#if !isAtBottom && unreadCount > 0}
-        <div 
+        <button 
           in:fade={{ duration: 200 }}
           out:fade={{ duration: 200 }}
           class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-blue-500 text-white px-4 py-2 rounded-full shadow-lg cursor-pointer"
           on:click={scrollToBottom}
+          on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') scrollToBottom(); }}
+          aria-label="Scroll to bottom"
         >
           <div class="flex items-center">
             <span class="mr-2">{unreadCount} new {unreadCount === 1 ? 'message' : 'messages'}</span>
@@ -409,7 +411,7 @@
               <path fill-rule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clip-rule="evenodd" />
             </svg>
           </div>
-        </div>
+        </button>
       {/if}
     {/if}
   </div>
