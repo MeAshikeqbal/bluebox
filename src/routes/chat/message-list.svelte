@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { onMount, afterUpdate, createEventDispatcher } from 'svelte';
+  import { onMount, afterUpdate,createEventDispatcher } from 'svelte';
   import { fly, fade } from 'svelte/transition';
   import MessageItem from './message-item.svelte';
+  import { ENV } from '../../lib/env-config';
   import type { Message } from './types';
   
   // Props
@@ -11,6 +12,7 @@
   // Local state
   let lastDate: string = '';
   let groupedMessages: { [key: string]: Message[] } = {};
+  let messagesContainer: HTMLDivElement | null = null;
 
   const dispatch = createEventDispatcher();
   
@@ -53,7 +55,7 @@
     // Group if same sender and within 2 minutes
     return (
       current.sender === previous.sender && 
-      current.timestamp - previous.timestamp < 2 * 60 * 1000
+      current.timestamp - previous.timestamp < ENV.MESSAGE_POLL_INTERVAL
     );
   }
 
@@ -65,7 +67,9 @@
   }
   
   afterUpdate(() => {
-    // Any post-update logic can go here
+    if (messagesContainer) {
+      (messagesContainer as HTMLDivElement).scrollTop = (messagesContainer as HTMLDivElement).scrollHeight;
+    }
   });
 </script>
 
