@@ -1,175 +1,36 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { writable, type Writable } from "svelte/store"
-import { ENV } from "./env-config"
+import { writable } from "svelte/store"
 
-// Define types for Gun.js
-type GunUser = {
-  is: any
-  auth: (username: string, password: string, cb: (ack: any) => void) => void
-  create: (username: string, password: string, cb: (ack: any) => void) => void
-  get: (key: string) => any
-  put: (data: any, cb?: (ack: any) => void) => void
-  leave: () => void
-  recall: (options: any, cb: (ack: any) => void) => void
-}
-
-type GunInstance = {
-  user: () => GunUser
-  get: (key: string) => any
-}
-
-// Define user type
+// Auth store interfaces
 export interface UserData {
   username: string
-  email: string
-  createdAt?: string
+  email?: string
 }
 
-// Create stores for authentication state
-export const user: Writable<UserData | null> = writable(null)
-export const authError: Writable<string> = writable("")
-export const authLoading: Writable<boolean> = writable(false)
+// Create stores
+export const user = writable<UserData | null>(null)
+export const authLoading = writable<boolean>(false)
+export const authError = writable<string | null>(null)
 
-// Initialize Gun and user instance
-let gun: any = null
-let user$: GunUser | null = null
-let initialized = false
+// Auth service functions
+export const authService = {
+  logout: async () => {
+    user.set(null)
+    window.location.href = "/login"
+  },
 
-export function initGun(): { gun: any; user$: GunUser | null } {
-  if (typeof window !== "undefined" && !initialized) {
-    // Only initialize on client-side
+  // Check auth status (e.g., on app start)
+  checkAuth: async () => {
+    authLoading.set(true)
     try {
-      const Gun = (window as any).Gun
-
-      if (!gun && Gun) {
-        console.log("Initializing Gun.js")
-        gun = new Gun({
-          peers: ENV.GUN_PEERS, // Use peers from config
-          localStorage: false,
-          radisk: true,
-          })
-        }
-
-        user$ = gun.user()
-        initialized = true
-
-        if (user$) {
-          user$.recall({ sessionStorage: true }, (ack: any) => {
-            console.log("User recall result:", ack)
-          console.log("User recall result:", ack)
-
-          if (user$ && user$.is) {
-            console.log("User is authenticated, loading profile")
-            user$.get("profile").once((profile: any) => {
-              if (profile) {
-                console.log("Profile loaded:", profile)
-                user.set({
-                  username: profile.username,
-                  email: profile.email,
-                })
-              } else {
-                console.log("No profile found for authenticated user")
-              }
-            })
-          } else {
-            console.log("User is not authenticated")
-            user.set(null)
-          }
-        })
-      }
+      // Use Gun.js session recall
+      // This is handled by individual components now
+      // but could be centralized here
     } catch (error) {
-      console.error("Error initializing Gun:", error)
-      initialized = false
-    }
-  }
-
-  return { gun, user$ }
-}
-
-export function getGun(): { gun: any; user$: GunUser | null } {
-  if (!initialized) {
-    return initGun()
-  }
-  return { gun, user$ }
-}
-
-export function logout(): void {
-  authLoading.set(true)
-
-  try {
-    const { user$ } = getGun()
-
-    if (user$) {
-      // Clear user data from store first
+      console.error("Auth check failed:", error)
       user.set(null)
-
-      // Then logout from Gun
-      user$.leave()
-
-      // Clear any session data
-      if (typeof window !== "undefined") {
-        sessionStorage.removeItem("gun/")
-        localStorage.removeItem("gun/")
-
-        // Force clear all Gun-related items from storage
-        Object.keys(sessionStorage).forEach((key) => {
-          if (key.startsWith("gun/")) {
-            sessionStorage.removeItem(key)
-          }
-        })
-
-        Object.keys(localStorage).forEach((key) => {
-          if (key.startsWith("gun/")) {
-            localStorage.removeItem(key)
-          }
-        })
-      }
-
-      // Reset initialized flag to allow re-initialization
-      initialized = false
-
-      // Redirect to login page
-      setTimeout(() => {
-        authLoading.set(false)
-        if (typeof window !== "undefined") {
-          window.location.href = "/login"
-        }
-      }, 500)
-    } else {
+    } finally {
       authLoading.set(false)
     }
-  } catch (error) {
-    console.error("Logout error:", error)
-    authLoading.set(false)
-  }
+  },
 }
 
-// Helper function to check if user is authenticated
-export function isAuthenticated(): boolean {
-  let authenticated = false
-
-  const unsubscribe = user.subscribe((value) => {
-    authenticated = !!value
-  })
-
-  unsubscribe()
-
-  return authenticated
-}
-
-// Function to protect routes
-export function requireAuth(page: string): boolean {
-  if (typeof window !== "undefined") {
-    const { user$ } = getGun()
-
-    if (!user$ || !user$.is) {
-      window.location.href = "/login"
-      return false
-    }
-
-    return true
-  }
-
-  return false
-}
